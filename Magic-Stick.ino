@@ -34,7 +34,7 @@ void setup(){
 // function to calculate the marvel impact decay sine wave
 void marbelImpact(){
     
-  impact_curve = (4*impact_vel * exp(-(i_dist)*(i_dist)));
+  impact_curve = (32*impact_vel * exp(-(i_dist)*(i_dist)));
   i_dist = i_dist + (HH * ((impact_vel )/ 2.0)  );  // HH value was adjusted (but I cannot feel the relation velocity/impact force clearly)
   //dist = p_dist + (H *((p_vel + vel)/2.0 ) );
   if (impact_curve < 0){ impact_curve = 0;}
