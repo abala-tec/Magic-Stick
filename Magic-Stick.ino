@@ -14,7 +14,7 @@
 #define CONTROL_RATE 256 // Hz, powers of 2 are most reliable
 
 // ================================================================
-// ===                      INITIAL SETUP                       ===
+// ===                      INITIAL SETUP                         ===
 // ================================================================
 
 float acc=0; float p_acc=0;  // simulated marbel acceleration
