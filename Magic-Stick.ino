@@ -11,15 +11,14 @@
 
 float acc=0; float p_acc=0;  // simulated marbel acceleration
 float vel=0; float p_vel=0;  // simulated marbel velocity
-float dist=1.0; float p_dist=1.0;  // simulated marbel distance
+float dist; float p_dist;  // simulated marbel distance
 const float LEN = 0.6; //2.0; //stick lenght in m
 const float LEN_MM = 600; //2000; //stick lenght in mm
 const float H = 1.0/256.0;  // drag simulation teime step in seconds
-const float HH = 0.4; // impact simulation time step in seconds (the smaller the larger the decay time)
-// variables to control the impact decay rate
 float impact_vel=0;
-float impact_curve = 1;
-float i_dist = 0.0;
+#define IMPACT_GAIN 32.0            // calibracion actuador
+volatile int impact_amp = 0;        // = IMPACT_GAIN * v_impacto
+volatile int impact_samples = 0;    // muestras restantes del pulso
 
 void setup(){
   Serial.begin(115200);
@@ -28,23 +27,15 @@ void setup(){
   setup_accelero();
   vel = 0.0; acc= 0.0;
   p_vel = 0.0; p_acc=0.0;
+  dist = p_dist = LEN / 2.0;
   startMozzi(CONTROL_RATE);
 }
 
-// function to calculate the marvel impact decay sine wave
+// Impacto segun paper: pulso de amplitud fija durante 1 periodo de muestreo,
+// amplitud proporcional a v_impacto -> energia ~ v^2, duracion siempre 3.9 ms.
 void marbelImpact(){
-    
-  impact_curve = (32*impact_vel * exp(-(i_dist)*(i_dist)));
-  i_dist = i_dist + (HH * ((impact_vel )/ 2.0)  );  // HH value was adjusted (but I cannot feel the relation velocity/impact force clearly)
-  //dist = p_dist + (H *((p_vel + vel)/2.0 ) );
-  if (impact_curve < 0){ impact_curve = 0;}
-
-  // SERIAL DEBUG
-  // Serial.print (impact_vel);
-  // Serial.print (",");
-  // Serial.print (impact_curve);
-  // Serial.print (",");
-  // Serial.println (i_dist/100.0);
+  impact_amp = (int)(IMPACT_GAIN * fabs(impact_vel));
+  impact_samples = AUDIO_RATE / CONTROL_RATE;  // 1 periodo control
 }
 
 
@@ -54,9 +45,8 @@ void rollingUp(float roll){
   //acc = az;
 
   if (p_dist > LEN){
-    if (vel != 0) { impact_vel = vel; i_dist = 0;  }  //impact_vel = vel; i_dist = dist;
+    if (vel != 0) { impact_vel = vel; marbelImpact(); }  // evita retrigger en pared
     vel = 0;
-    marbelImpact();
   }else{
     vel = p_vel + (H * ( (p_acc + acc ) / 2.0 )   ) ;
   }
@@ -78,9 +68,8 @@ void rollingDown(double roll){
    }
 
    if (p_dist < 0){
-      if (vel != 0)  { impact_vel = -vel;  i_dist = 0;  }  // impact_vel = -vel;  i_dist = LEN;
-      vel = 0;  
-      marbelImpact();  
+      if (vel != 0)  { impact_vel = -vel; marbelImpact(); }
+      vel = 0;
    }else{
       vel = p_vel + (H * ( (p_acc + acc ) / 2.0 )   ) ;
    }
@@ -118,18 +107,11 @@ void updateControl(){
 }
 
 int dd = 0;
-int index = 0;
 int updateAudio(){
-  dd =  (int)(dist * 1000);
-  if ((dd < 0) || (dd > LEN_MM)){
-    dd = (int)(i_dist * 1000);
-    index = dd % 30;
-    return isinTable8[index] * impact_curve;
-    //return isinTable8[0];
-  }
-  index = dd % 30;
-  return isinTable8[index];
-
+  if (impact_samples > 0){ impact_samples--; return impact_amp; }  // pulso impacto
+  dd = (int)(dist * 1000);
+  if ((dd < 0) || (dd > LEN_MM)) return 0;  // roca fuera: silencio
+  return isinTable8[dd % 30];               // rodadura
 }
 
 void loop() {
