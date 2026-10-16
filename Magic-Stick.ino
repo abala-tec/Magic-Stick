@@ -4,7 +4,7 @@
 #define YAW_DEADBAND 3.0    // dps, below this bias tracker runs (bias/noise)
 #define ROLL_GAIN    4      // rolling audio amplitude (1 = original)
 #define YAW_BIAS_ALPHA 0.001 // gyro bias tracker rate (harvested while still)
-#define DEMO_MODE    3      // 1 = classic tilt_y | 2 = absolute yaw, no gate | 3 = absolute yaw, gated
+#define DEMO_MODE    4      // 1 = classic tilt_y | 2 = absolute yaw, no gate | 3 = absolute yaw, gated | 4 = yaw, caidas encadenadas, no gate
 
 #include "accel_control.h"  // MPU control (for stick roll and acceleration)
 #include <MozziGuts.h>
@@ -27,6 +27,8 @@ float impact_vel=0;
 float yawAngle = 0;  // absolute yaw since boot [rad], DEMO_MODE 2/3
 #define IMPACT_GAIN 100.0            // calibracion actuador (peak envelope ~0.6*amp)
 #define IMPACT_LEN  90              // muestras pulso: 30 = 1 periodo tabla (~1.8 ms) | 64 = paper (3.9 ms)
+#define FALL_DWELL_S 1.0                          // KNOB: pausa entre caidas [s]
+#define FALL_DWELL   (int)(FALL_DWELL_S * CONTROL_RATE)   // convertir a ticks
 volatile int impact_amp = 0;        // = IMPACT_GAIN * v_impacto
 volatile int impact_samples = 0;    // muestras restantes del pulso
 
@@ -122,11 +124,45 @@ void rollingYaw(float a){
 }
 
 
+// DEMO_MODE 4: caidas encadenadas, sin gate. Al impactar, la roca reaparece en
+// el extremo de origen, espera FALL_DWELL_S y vuelve a caer. Repite indefinido.
+void rollingYawFalls(float a){
+  static int dwell = 0;    // ticks restantes de pausa entre caidas
+  static int falls = 0;    // contador debug
+
+  acc = 7.0 * sin(a);      // cualquier variacion de yaw cambia acc inmediato
+
+  bool hitFar  = (p_dist > LEN && acc > 0);   // llego al extremo +
+  bool hitNear = (p_dist < 0   && acc < 0);   // llego al extremo -
+
+  if (hitFar || hitNear){
+    if (vel != 0){
+      impact_vel = (acc > 0) ? vel : -vel;
+      marbelImpact();
+    }
+    dist = hitFar ? 0 : LEN;   // respawn en extremo de origen
+    vel = p_vel = 0;
+    p_acc  = acc;
+    p_dist = dist;
+    dwell  = FALL_DWELL;
+    Serial.print("FALL #"); Serial.println(++falls);
+    return;
+  }
+
+  if (dwell > 0){ dwell--; p_acc = acc; return; }   // esperando en origen
+
+  vel  = p_vel + (H * ((p_acc + acc) / 2.0));
+  dist = p_dist + (H * ((p_vel + vel) / 2.0));
+
+  p_acc = acc; p_vel = vel; p_dist = dist;
+}
+
+
 float TILT_LIMIT = DEG_TO_RAD * 1;  
 void updateControl(){
   getAccInfo();  // gets the accelerometer info 
   
-#if DEMO_MODE == 2 || DEMO_MODE == 3
+#if DEMO_MODE >= 2            // 1 = classic; 2,3,4 integran yaw
   yawAngle += YAW_SIGN * yawRateClean() * DEG_TO_RAD * H;
   if (yawAngle > PI)  yawAngle -= 2*PI;
   if (yawAngle < -PI) yawAngle += 2*PI;
@@ -135,6 +171,8 @@ void updateControl(){
   rollingYaw(yawAngle);                    // totally symmetric, ignores TILT_LIMIT
 #elif DEMO_MODE == 3
   if (yawAngle > TILT_LIMIT || yawAngle < -TILT_LIMIT) rollingYaw(yawAngle);
+#elif DEMO_MODE == 4
+  rollingYawFalls(yawAngle);               // sin gate: todo yaw mueve la simulacion
 #else
   if ((tilt_y < 2*PI-TILT_LIMIT) && (tilt_y > PI)){
     rollingDown(tilt_y);
