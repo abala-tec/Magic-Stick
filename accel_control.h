@@ -153,17 +153,17 @@ void getAccInfo(){
       tilt_z= (atan2(-yAng, -xAng)+PI);   // z (changed for experimentation)
 
       
-     static byte dbg_count = 0;
-     if (++dbg_count >= 8) {   // 8x throttle: serial must not stall the control loop
-       dbg_count = 0;
-       Serial.print("x Angle ");Serial.print(tilt_x);
-       Serial.print("\ty Angle ");Serial.print(tilt_y);
-       Serial.print("\tz Angle ");Serial.print(tilt_z);
-       Serial.print("\tyawRate ");Serial.print(gyro_f[YAW_AXIS]);
-       Serial.print("\tyawAngle ");Serial.print(yawAngle, 4);
-       Serial.print("\tyawDeg ");Serial.print(RAD_TO_DEG * yawAngle, 2);
-       Serial.println();
-     }
+//     static byte dbg_count = 0;
+//     if (++dbg_count >= 8) {   // 8x throttle: serial must not stall the control loop
+//       dbg_count = 0;
+//       Serial.print("x Angle ");Serial.print(tilt_x);
+//       Serial.print("\ty Angle ");Serial.print(tilt_y);
+//       Serial.print("\tz Angle ");Serial.print(tilt_z);
+//       Serial.print("\tyawRate ");Serial.print(gyro_f[YAW_AXIS]);
+//       Serial.print("\tyawAngle ");Serial.print(yawAngle, 4);
+//       Serial.print("\tyawDeg ");Serial.print(RAD_TO_DEG * yawAngle, 2);
+//       Serial.println();
+//     }
       
       initiate_read_accelero();      
       break;

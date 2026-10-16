@@ -25,7 +25,8 @@ const float LEN_MM = 600; //2000; //stick lenght in mm
 const float H = 1.0/256.0;  // drag simulation teime step in seconds
 float impact_vel=0;
 float yawAngle = 0;  // absolute yaw since boot [rad], DEMO_MODE 2/3
-#define IMPACT_GAIN 32.0            // calibracion actuador
+#define IMPACT_GAIN 100.0            // calibracion actuador (peak envelope ~0.6*amp)
+#define IMPACT_LEN  90              // muestras pulso: 30 = 1 periodo tabla (~1.8 ms) | 64 = paper (3.9 ms)
 volatile int impact_amp = 0;        // = IMPACT_GAIN * v_impacto
 volatile int impact_samples = 0;    // muestras restantes del pulso
 
@@ -40,11 +41,13 @@ void setup(){
   startMozzi(CONTROL_RATE);
 }
 
-// Impacto segun paper: pulso de amplitud fija durante 1 periodo de muestreo,
-// amplitud proporcional a v_impacto -> energia ~ v^2, duracion siempre 3.9 ms.
+// Impacto segun paper: duracion fija, amplitud proporcional a v_impacto -> energia ~ v^2.
+// Render: rafaga AC amortiguada (un arco de tabla) para que pase el amp de audio.
 void marbelImpact(){
   impact_amp = (int)(IMPACT_GAIN * fabs(impact_vel));
-  impact_samples = AUDIO_RATE / CONTROL_RATE;  // 1 periodo control
+  impact_samples = IMPACT_LEN;
+  Serial.print("IMPACT v="); Serial.print(impact_vel, 2);
+  Serial.print(" amp="); Serial.println(impact_amp);
 }
 
 
@@ -102,7 +105,10 @@ void rollingDown(double roll){
 void rollingYaw(float a){
   acc = 7.0 * sin(a);
   if ((p_dist > LEN && acc > 0) || (p_dist < 0 && acc < 0)){
-    if (vel != 0) { impact_vel = (acc > 0) ? vel : -vel; marbelImpact(); }
+    if (vel != 0) { 
+      impact_vel = (acc > 0) ? vel : -vel; 
+      marbelImpact(); 
+    }
     vel = 0;
   }else{
     vel = p_vel + (H * ((p_acc + acc) / 2.0) );
@@ -153,7 +159,11 @@ void updateControl(){
 
 int dd = 0;
 int updateAudio(){
-  if (impact_samples > 0){ impact_samples--; return impact_amp; }  // pulso impacto
+  if (impact_samples > 0){  // rafaga AC amortiguada, un solo trigger
+    int e = IMPACT_LEN - impact_samples;
+    impact_samples--;
+    return (int)((long)isinTable8[e % 30] * (IMPACT_LEN - e) * impact_amp / (20L * IMPACT_LEN));
+  }
   dd = (int)(dist * 1000);
   if ((dd < 0) || (dd > LEN_MM)) return 0;  // roca fuera: silencio
   return isinTable8[dd % 30] * ROLL_GAIN;   // rodadura
